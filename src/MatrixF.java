@@ -1,5 +1,7 @@
 import java.util.function.Function;
 
+import static java.util.stream.IntStream.range;
+
 public class MatrixF {
     protected int rows;
     protected int cols;
@@ -134,10 +136,6 @@ public class MatrixF {
 
     //Do matrix multiplication(i.e. NOT SCALING) with the supplied matrices and return the result
     static MatrixF multiply(MatrixF m1, MatrixF m2) {
-//        System.out.println("Multiplying:");
-//        m1.print();
-//        System.out.println("With:");
-//        m2.print();
         if (m1.cols != m2.rows) {
             throw new IllegalArgumentException("m1.cols must be equal to m2.rows!");
         }
@@ -151,8 +149,6 @@ public class MatrixF {
                 out.data[i][j] = value;
             }
         }
-//        System.out.println("The multiplication resulted in:");
-//        out.print();
         return out;
     }
 
@@ -192,49 +188,52 @@ public class MatrixF {
         this.data = data;
     }
 
-    static void test() {
-        //Matrix tests
-        float[][] m1 = {
-                {1.0f, 0.0f, 2.0f},
-                {1.0f, 0.0f, 2.0f},
-                {1.0f, 0.0f, 2.0f}
-        };
-        float[][] m2 = {
-                {0.0f, 2.0f, 1.0f},
-                {0.0f, 2.0f, 1.0f},
-                {0.0f, 2.0f, 1.0f}
-        };
-        MatrixF m_1 = new MatrixF(m1);
-        MatrixF m_2 = new MatrixF(m2);
+    //Experimental methods!
 
-        System.out.println("Matrix 1:");
-        m_1.print();
-        System.out.println("Matrix 2:");
-        m_2.print();
+    //An optimized version of the matrix multiply method
+    //DOES NOT guarantee faster execution, is only faster in some circumstances
+    static MatrixF optimizedMultiply(MatrixF m1, MatrixF m2) {
+        if (m1.cols != m2.rows) {
+            throw new IllegalArgumentException("m1.cols must be equal to m2.rows!");
+        }
+        MatrixF out = new MatrixF(m1.rows, m2.cols);
+        for (int i = 0; i < m1.rows; i++) {
+            float[] iRowM1 = m1.data[i];
+            float[] iRowO = out.data[i];
+            for (int k = 0; k < m1.cols; k++) {
+                float[] kRowM2 = m2.data[k];
+                float ikA = iRowM1[k];
+                for (int j = 0; j < m2.cols; j++) {
+                    iRowO[j] += ikA * kRowM2[j];
+                }
+            }
+            out.data[i] = iRowO;
+        }
+        return out;
+    }
 
-        System.out.println("Mapping m1 to *2");
-        MatrixF.map(m_1, e -> e * 2).print();
-
-        System.out.println("Adding m1 and m2");
-        MatrixF.add(m_1, m_2).print();
-
-        System.out.println("Subtracting m2 from m1");
-        MatrixF.subtract(m_1, m_2).print();
-
-        System.out.println("Multiplying m1 by 3");
-        MatrixF.multiply(m_1, 3).print();
-
-        System.out.println("Matrix multiply m1 with m2");
-        MatrixF.multiply(m_1, m_2).print();
-
-        System.out.println("Element wise multiply m1 * m2");
-        MatrixF.elementMultiply(m_1, m_2).print();
-
-        System.out.println("Transpose m1");
-        MatrixF.transpose(m_1).print();
-
-        System.out.println("Randomizing -1.0f to 1.0f");
-        m_1.randomize(-1.0f, 1.0f);
-        m_1.print();
+    //This method splits the multiplication into different threads for simultaneous execution
+    //DOES NOT guarantee a faster execution, the matrix has to be of considerable size
+    //The inefficiency is (probably) due to the high cost of initializing threads
+    static MatrixF parallelMultiply(MatrixF m1, MatrixF m2) {
+        if (m1.cols != m2.rows) {
+            throw new IllegalArgumentException("m1.cols must be equal to m2.rows!");
+        }
+        MatrixF out = new MatrixF(m1.rows, m2.cols);
+        out.data = range(0, m1.rows).parallel()
+                .mapToObj(e -> {
+                    float[] iRowM1 = m1.data[e];
+                    float[] iRowO = out.data[e];
+                    for (int k = 0; k < m1.cols; k++) {
+                        float[] kRowM2 = m2.data[k];
+                        float ikA = iRowM1[k];
+                        for (int j = 0; j < m2.cols; j++) {
+                            iRowO[j] += ikA * kRowM2[j];
+                        }
+                    }
+                    return iRowO;
+                })
+                .toArray(size -> new float[m1.rows][m2.cols]);
+        return out;
     }
 }
