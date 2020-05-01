@@ -3,15 +3,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 class NeuralNetwork {
-    protected List<MatrixF> weights;
+    private List<MatrixF> weights;
 
-    protected List<VectorF> biases;
+    private List<VectorF> biases;
 
-    protected float learning_rate = 0.1f;
+    private float learning_rate = 0.1f;
 
-    protected List<Float> last_errors;
+    private int lapping_phase_length = 10000;
 
-    protected int training_lap = 0;
+    //Default to the sigmoid activation function
+    private NNActivationFunction AF = new NNActivationFunction();
+
+    private float current_phase_error = 0.0f;
 
     NeuralNetwork(int[] layer_config) {
         //Initialize all weights
@@ -37,9 +40,6 @@ class NeuralNetwork {
         for (VectorF bias : biases) {
             bias.randomize(-1.0f, 1.0f);
         }
-
-        last_errors = new ArrayList<>();
-
     }
 
     List<VectorF> feedForward(VectorF input) {
@@ -56,65 +56,125 @@ class NeuralNetwork {
                 result = MatrixF.multiply(weights.get(i), results.get(results.size()-1));
             }
             result.add(biases.get(i));
-            result.map(SmallMath::sigmoid);
+            result.map(AF.activation_function);
             //Make the result into a vector before adding it to the list
             results.add(VectorF.fromMatrixF(result));
         }
         return results;
     }
 
-    void train(VectorF input, VectorF target) {
-        training_lap++;
+    void train(List<List<VectorF>> data, int laps) {
+        System.out.println("Training network for " + laps + " laps");
+        double start = System.currentTimeMillis();
 
-        List<VectorF> values = feedForward(input);
-        //Add the inputs to the values to calculate correctly
+        //Start at 1 for the error checking to understand what's going on
+        for (int i = 1; i <= laps; i++) {
+            int random_index = (int)(Math.random() * (data.get(0).size()-1));
+            VectorF input = data.get(0).get(random_index);
+            VectorF target = data.get(1).get(random_index);
+
+            List<VectorF> values = feedForward(input);
+            //Add the inputs to the values to calculate correctly
             values.add(0, input);
 
-        List<VectorF> errors = new ArrayList<>();
-        //Go backwards from the output towards the input
-            for (int i = weights.size() - 1; i >= 0; i--) {
-            VectorF error;
-            if (i == weights.size() - 1) {
-                error = VectorF.subtract(target, values.get(i + 1));
-            } else {
-                MatrixF weight_t = MatrixF.transpose(weights.get(i + 1));
-                error = VectorF.fromMatrixF(MatrixF.multiply(weight_t, errors.get(0)));
+            List<VectorF> errors = new ArrayList<>();
+            //Go backwards from the output towards the input
+            for (int j = weights.size() - 1; j >= 0; j--) {
+                VectorF error;
+                if (j == weights.size() - 1) {
+                    error = VectorF.subtract(target, values.get(j + 1));
+                } else {
+                    MatrixF weight_t = MatrixF.transpose(weights.get(j + 1));
+                    error = VectorF.fromMatrixF(MatrixF.multiply(weight_t, errors.get(0)));
+                }
+                errors.add(0, error);
+
+                VectorF gradients = VectorF.map(values.get(j + 1), AF.fake_der_activation_function);
+                gradients = VectorF.elementMultiply(gradients, errors.get(0));
+                gradients.multiply(learning_rate);
+
+                MatrixF value_t = MatrixF.transpose(values.get(j));
+                MatrixF weight_deltas = MatrixF.multiply(gradients, value_t);
+
+                weights.get(j).add(weight_deltas);
+                biases.get(j).add(gradients);
             }
-            errors.add(0, error);
 
-            VectorF gradients = VectorF.map(values.get(i + 1), SmallMath::dsigmoid);
-            gradients = VectorF.elementMultiply(gradients, errors.get(0));
-            gradients.multiply(learning_rate);
-
-            MatrixF value_t = MatrixF.transpose(values.get(i));
-            MatrixF weight_deltas = MatrixF.multiply(gradients, value_t);
-
-            weights.get(i).add(weight_deltas);
-            biases.get(i).add(gradients);
+            updateError(i, errors.get(biases.size() - 1), lapping_phase_length);
         }
+        current_phase_error = 0.0f;
 
+        System.out.print("The training time was (s): ");
+        System.out.println((System.currentTimeMillis()- start)/1000.0);
+        System.out.println();
+    }
+
+    void test(List<List<VectorF>> data, int laps) {
+        System.out.println("Testing network for " + laps + " laps");
+        double start = System.currentTimeMillis();
+
+        //Start at 1 for the error checking to understand what's going on
+        for (int i = 1; i <= laps; i++) {
+            int random_index = (int)(Math.random() * (data.get(0).size()-1));
+            VectorF input = data.get(0).get(random_index);
+            VectorF target = data.get(1).get(random_index);
+
+            List<VectorF> values = feedForward(input);
+            //Add the inputs to the values to calculate correctly
+            values.add(0, input);
+
+            List<VectorF> errors = new ArrayList<>();
+            //Go backwards from the output towards the input
+            for (int j = weights.size() - 1; j >= 0; j--) {
+                VectorF error;
+                if (j == weights.size() - 1) {
+                    error = VectorF.subtract(target, values.get(j + 1));
+                } else {
+                    MatrixF weight_t = MatrixF.transpose(weights.get(j + 1));
+                    error = VectorF.fromMatrixF(MatrixF.multiply(weight_t, errors.get(0)));
+                }
+                errors.add(0, error);
+            }
+            //For testing the phase is as long as the amount of laps, no need to do it more than once
+            updateError(i, errors.get(biases.size() - 1), laps);
+        }
+        current_phase_error = 0.0f;
+
+        System.out.print("The testing time was (s): ");
+        System.out.println((System.currentTimeMillis()- start)/1000.0);
+        System.out.println();
+    }
+
+    private void updateError(int lap, VectorF output_error, int phase_length) {
         float error = 0.0f;
-            for (float[] e : errors.get(biases.size()-1).data) {
+        for (float[] e : output_error.data) {
             error += Math.abs(e[0]);
         }
-        error = error / errors.get(biases.size()-1).rows;
-            last_errors.add(0, error);
-            if (last_errors.size() > 5000) {
-            last_errors.remove(last_errors.size()-1);
+        error = error / output_error.rows;
+
+        current_phase_error += error / phase_length;
+
+        if (lap % phase_length == 0) {
+            System.out.println("Error for " + phase_length + " laps: " + current_phase_error);
+            current_phase_error = 0.0f;
         }
-            if (training_lap % 5000 == 0) {
-            float tot_error = 0.0f;
-            for (float e : last_errors) {
-                tot_error += e;
-            }
-            last_errors.remove(last_errors.size()-1);
-            System.out.println("Error for last 5000 laps: " + tot_error/5000.0f);
-        }
-}
+    }
 
     VectorF predict(VectorF input) {
         List<VectorF> results = feedForward(input);
         return results.get(results.size()-1);
+    }
+
+    void setLearningRate(float lR) {
+        learning_rate = lR;
+    }
+
+    void setPhaseLength(int phase_length) {
+        lapping_phase_length = phase_length;
+    }
+
+    void setAF(NNActivationFunction activation_function) {
+        AF = activation_function;
     }
 
     void saveState(String file_path) {
