@@ -2,12 +2,16 @@ import java.io.FileWriter;
 import java.util.ArrayList;
 import java.util.List;
 
-public class NeuralNetwork {
-    private List<MatrixF> weights;
+class NeuralNetwork {
+    protected List<MatrixF> weights;
 
-    private List<VectorF> biases;
+    protected List<VectorF> biases;
 
-    private float learning_rate = 0.1f;
+    protected float learning_rate = 0.1f;
+
+    protected List<Float> last_errors;
+
+    protected int training_lap = 0;
 
     NeuralNetwork(int[] layer_config) {
         //Initialize all weights
@@ -34,6 +38,8 @@ public class NeuralNetwork {
             bias.randomize(-1.0f, 1.0f);
         }
 
+        last_errors = new ArrayList<>();
+
     }
 
     List<VectorF> feedForward(VectorF input) {
@@ -58,18 +64,20 @@ public class NeuralNetwork {
     }
 
     void train(VectorF input, VectorF target) {
+        training_lap++;
+
         List<VectorF> values = feedForward(input);
         //Add the inputs to the values to calculate correctly
-        values.add(0, input);
+            values.add(0, input);
 
         List<VectorF> errors = new ArrayList<>();
         //Go backwards from the output towards the input
-        for (int i = weights.size() - 1; i >= 0; i--) {
+            for (int i = weights.size() - 1; i >= 0; i--) {
             VectorF error;
             if (i == weights.size() - 1) {
                 error = VectorF.subtract(target, values.get(i + 1));
             } else {
-                MatrixF weight_t = MatrixF.transpose(weights.get(i+1));
+                MatrixF weight_t = MatrixF.transpose(weights.get(i + 1));
                 error = VectorF.fromMatrixF(MatrixF.multiply(weight_t, errors.get(0)));
             }
             errors.add(0, error);
@@ -85,37 +93,24 @@ public class NeuralNetwork {
             biases.get(i).add(gradients);
         }
 
-//        MatrixF output = MatrixF.multiply(weights.get(1), values.get(1));
-//        output.add(biases.get(1));
-//        output.map(SmallMath::sigmoid);
-//
-//        values.add(VectorF.fromMatrixF(output));
-//
-//        MatrixF output_errors = MatrixF.subtract(target, values.get(2));
-//
-//        MatrixF gradients = MatrixF.map(values.get(2), SmallMath::dsigmoid);
-//        gradients = MatrixF.elementMultiply(gradients, output_errors);
-//        gradients.multiply(learning_rate);
-//
-//        MatrixF hidden_t = MatrixF.transpose(values.get(1));
-//        MatrixF weight_ho_deltas = MatrixF.multiply(gradients, hidden_t);
-//
-//        weights.get(1).add(weight_ho_deltas);
-//        biases.get(1).add(gradients);
-//
-//        MatrixF who_t = MatrixF.transpose(weights.get(1));
-//        MatrixF hidden_errors = MatrixF.multiply(who_t, output_errors);
-//
-//        MatrixF hidden_gradient = MatrixF.map(values.get(1), SmallMath::dsigmoid);
-//        hidden_gradient = MatrixF.elementMultiply(hidden_gradient, hidden_errors);
-//        hidden_gradient.multiply(learning_rate);
-//
-//        MatrixF inputs_t = MatrixF.transpose(values.get(0));
-//        MatrixF weight_ih_deltas = MatrixF.multiply(hidden_gradient, inputs_t);
-//
-//        weights.get(0).add(weight_ih_deltas);
-//        biases.get(0).add(hidden_gradient);
-    }
+        float error = 0.0f;
+            for (float[] e : errors.get(biases.size()-1).data) {
+            error += Math.abs(e[0]);
+        }
+        error = error / errors.get(biases.size()-1).rows;
+            last_errors.add(0, error);
+            if (last_errors.size() > 5000) {
+            last_errors.remove(last_errors.size()-1);
+        }
+            if (training_lap % 5000 == 0) {
+            float tot_error = 0.0f;
+            for (float e : last_errors) {
+                tot_error += e;
+            }
+            last_errors.remove(last_errors.size()-1);
+            System.out.println("Error for last 5000 laps: " + tot_error/5000.0f);
+        }
+}
 
     VectorF predict(VectorF input) {
         List<VectorF> results = feedForward(input);
