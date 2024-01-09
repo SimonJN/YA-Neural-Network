@@ -11,4 +11,8 @@ public class SmallMath {
     static float tanh(float x) {
         return (float)((Math.exp(x) - Math.exp(-x)) / (Math.exp(x) + Math.exp(-x)));
     }
+
+    static float dtanh(float x) {
+        return 1 - x * x;
+    }
 }

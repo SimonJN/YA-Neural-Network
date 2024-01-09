@@ -34,6 +34,7 @@ public class MNISTNN{
         List<List<VectorF>> data = Utils.parseNNData("NNData\\mnist_test.txt", 10, 28*28, true);
 
         nn.test(data, 10000);
+
     }
 
     void restore() {
